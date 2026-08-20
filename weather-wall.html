@@ -87,11 +87,17 @@
 
   /* ---------- OVERLAY ---------- */
   .overlay{ position:absolute; inset:0; display:flex; flex-direction:column; justify-content:space-between; padding: 4vh 5vw; color:#fdfdfb; pointer-events:none;}
-  .top{ text-shadow: 0 2px 18px rgba(0,0,0,.35); }
+  .outlined{
+    -webkit-text-stroke: 1.5px #000;
+    text-shadow:
+      -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000,
+      0 2px 18px rgba(0,0,0,.45);
+  }
+  .top{ }
   .time{ font-family:'Space Grotesk',sans-serif; font-weight:500; font-size:6.4vw; line-height:1; letter-spacing:-0.01em; font-variant-numeric: tabular-nums; }
   .date{ margin-top:.6vh; font-size:1.35vw; letter-spacing:.14em; text-transform:uppercase; opacity:.72; }
 
-  .bottom{ text-shadow: 0 2px 18px rgba(0,0,0,.4); }
+  .bottom{ display:flex; align-items:flex-end; justify-content:space-between; gap:3vw; }
   .temp-row{ display:flex; align-items:flex-start; }
   .temp{ font-family:'Fraunces', serif; font-weight:400; font-size:13vw; line-height:.85; letter-spacing:-.02em; }
   .unit{ font-family:'Fraunces', serif; font-weight:300; font-size:4.5vw; margin-top:1.2vw; }
@@ -99,6 +105,19 @@
   .meta{ margin-top:1.4vh; font-size:1.25vw; opacity:.78; }
   .loc{ margin-top:.4vh; font-size:1.3vw; opacity:.85; font-weight:500; }
   .updated{ margin-top:.6vh; font-size:.95vw; opacity:.55; }
+  .date.outlined, .condition.outlined, .meta.outlined, .loc.outlined, .updated.outlined{ -webkit-text-stroke-width: .7px; }
+
+  /* ---------- FORECAST (bottom right) ---------- */
+  .forecast{ display:flex; flex-direction:column; align-items:flex-end; gap:1.6vh; text-align:right; flex-shrink:0; }
+  .fc-section{ display:flex; flex-direction:column; align-items:flex-end; }
+  .fc-label{ font-size:1vw; letter-spacing:.16em; text-transform:uppercase; opacity:.62; margin-bottom:.6vh; -webkit-text-stroke-width:.6px; }
+  .fc-hours{ display:flex; gap:1.6vw; }
+  .fc-hour{ display:flex; flex-direction:column; align-items:center; gap:.3vh; }
+  .fc-hour-time{ font-size:.95vw; opacity:.75; -webkit-text-stroke-width:.5px; }
+  .fc-hour-temp{ font-family:'Fraunces', serif; font-size:2vw; -webkit-text-stroke-width:.6px; }
+  .fc-tomorrow{ display:flex; align-items:baseline; gap:.6vw; }
+  .fc-tomorrow-cond{ font-size:1.2vw; letter-spacing:.06em; text-transform:uppercase; opacity:.9; -webkit-text-stroke-width:.6px; }
+  .fc-tomorrow-hilo{ font-size:1.1vw; opacity:.75; -webkit-text-stroke-width:.5px; }
 
   /* ---------- PERMISSION / STATUS ---------- */
   .status{
@@ -121,6 +140,13 @@
     .temp{ font-size:22vw; } .unit{ font-size:7vw; }
     .condition{ font-size:3vw; } .meta,.loc{ font-size:2.4vw; } .updated{font-size:1.8vw;}
     .status p, .status button{ font-size:3vw; }
+    .bottom{ flex-direction:column; align-items:flex-start; gap:2.5vh; }
+    .forecast{ align-items:flex-start; text-align:left; width:100%; }
+    .fc-label{ font-size:2.4vw; }
+    .fc-hour-time{ font-size:2.2vw; }
+    .fc-hour-temp{ font-size:4.5vw; }
+    .fc-tomorrow-cond, .fc-tomorrow-hilo{ font-size:2.6vw; }
+    .fc-hours{ gap:3.5vw; }
   }
 </style>
 </head>
@@ -167,17 +193,29 @@
 
   <div class="overlay">
     <div class="top">
-      <div class="time" id="time">--:--</div>
-      <div class="date" id="date">--</div>
+      <div class="time outlined" id="time">--:--</div>
+      <div class="date outlined" id="date">--</div>
     </div>
     <div class="bottom">
-      <div class="temp-row">
-        <div class="temp" id="temp">--</div><div class="unit">°</div>
+      <div class="current">
+        <div class="temp-row">
+          <div class="temp outlined" id="temp">--</div><div class="unit outlined">°</div>
+        </div>
+        <div class="condition outlined" id="condition">Loading…</div>
+        <div class="meta outlined"><span id="feels"></span></div>
+        <div class="loc outlined" id="loc"></div>
+        <div class="updated outlined" id="updated"></div>
       </div>
-      <div class="condition" id="condition">Loading…</div>
-      <div class="meta"><span id="feels"></span></div>
-      <div class="loc" id="loc"></div>
-      <div class="updated" id="updated"></div>
+      <div class="forecast">
+        <div class="fc-section">
+          <div class="fc-label outlined">Rest of Today</div>
+          <div class="fc-hours" id="fcHours"></div>
+        </div>
+        <div class="fc-section">
+          <div class="fc-label outlined">Tomorrow</div>
+          <div class="fc-tomorrow" id="fcTomorrow"></div>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -200,6 +238,8 @@
     feels: document.getElementById('feels'),
     loc: document.getElementById('loc'),
     updated: document.getElementById('updated'),
+    fcHours: document.getElementById('fcHours'),
+    fcTomorrow: document.getElementById('fcTomorrow'),
     status: document.getElementById('status'),
     statusText: document.getElementById('statusText'),
     statusBtn: document.getElementById('statusBtn'),
@@ -393,11 +433,14 @@
     if(lat==null || lon==null) return;
     var url = 'https://api.open-meteo.com/v1/forecast?latitude='+lat+'&longitude='+lon+
       '&current=temperature_2m,apparent_temperature,weather_code,is_day'+
-      '&daily=sunrise,sunset,temperature_2m_max,temperature_2m_min'+
+      '&hourly=temperature_2m,weather_code'+
+      '&daily=weather_code,sunrise,sunset,temperature_2m_max,temperature_2m_min'+
+      '&temperature_unit=fahrenheit'+
       '&timezone=auto';
     fetch(url).then(function(r){ return r.json(); }).then(function(j){
       var cur = j.current;
       var daily = j.daily;
+      var hourly = j.hourly;
       todaySunrise = new Date(daily.sunrise[0]);
       todaySunset = new Date(daily.sunset[0]);
 
@@ -418,6 +461,9 @@
       els.feels.textContent = 'Feels like ' + Math.round(cur.apparent_temperature) + '° · H ' +
         Math.round(daily.temperature_2m_max[0]) + '° L ' + Math.round(daily.temperature_2m_min[0]) + '°';
 
+      renderHourly(hourly, now);
+      renderTomorrow(daily);
+
       lastFetch = new Date();
       dataReady = true;
       els.updated.textContent = 'Updated just now';
@@ -426,6 +472,37 @@
     }).catch(function(){
       // keep showing last good data; try again on next cycle
     });
+  }
+
+  function renderHourly(hourly, now){
+    if(!hourly || !hourly.time) { els.fcHours.innerHTML = ''; return; }
+    var todayY = now.getFullYear(), todayM = now.getMonth(), todayD = now.getDate();
+    var items = [];
+    for(var i=0;i<hourly.time.length && items.length<5;i++){
+      var dt = new Date(hourly.time[i]);
+      if(dt <= now) continue;
+      if(dt.getFullYear()!==todayY || dt.getMonth()!==todayM || dt.getDate()!==todayD) break;
+      items.push({ time: dt, temp: hourly.temperature_2m[i] });
+    }
+    var frag = '';
+    items.forEach(function(it){
+      var label = it.time.toLocaleTimeString([], {hour:'numeric'});
+      frag += '<div class="fc-hour">' +
+        '<div class="fc-hour-time outlined">'+label+'</div>' +
+        '<div class="fc-hour-temp outlined">'+Math.round(it.temp)+'°</div>' +
+        '</div>';
+    });
+    els.fcHours.innerHTML = frag || '<div class="fc-hour-time outlined">No more hours today</div>';
+  }
+
+  function renderTomorrow(daily){
+    if(!daily || !daily.weather_code || daily.weather_code.length < 2){ els.fcTomorrow.innerHTML=''; return; }
+    var state = codeToState(daily.weather_code[1]);
+    var hi = Math.round(daily.temperature_2m_max[1]);
+    var lo = Math.round(daily.temperature_2m_min[1]);
+    els.fcTomorrow.innerHTML =
+      '<span class="fc-tomorrow-cond outlined">'+LABELS[state]+'</span>' +
+      '<span class="fc-tomorrow-hilo outlined">H '+hi+'° L '+lo+'°</span>';
   }
 
   function scheduleRefresh(){
